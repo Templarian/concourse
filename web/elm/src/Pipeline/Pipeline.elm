@@ -73,6 +73,8 @@ type alias Model =
         , hideLegendCounter : Float
         , isToggleLoading : Bool
         , hovered : Maybe DomID
+        , isPhoneScreen : Bool
+        , isSideBarOpen : Bool
         }
 
 
@@ -102,10 +104,16 @@ init flags =
             , selectedGroups = flags.selectedGroups
             , isUserMenuExpanded = False
             , hovered = Nothing
+            , isPhoneScreen = False
+            , isSideBarOpen = False
             }
     in
     ( model
-    , [ FetchPipeline flags.pipelineLocator, FetchVersion, ResetPipelineFocus ]
+    , [ FetchPipeline flags.pipelineLocator
+      , FetchVersion
+      , ResetPipelineFocus
+      , GetScreenSize
+      ]
     )
 
 
@@ -263,6 +271,9 @@ handleCallback callback ( model, effects ) =
         VersionFetched (Err _) ->
             ( { model | experiencingTurbulence = True }, effects )
 
+        ScreenResized viewport ->
+            ( { model | isPhoneScreen = viewport.viewport.width < 812 }, effects )
+
         _ ->
             ( model, effects )
 
@@ -296,6 +307,9 @@ handleDelivery delivery ( model, effects ) =
 
         ClockTicked OneMinute _ ->
             ( model, effects ++ [ FetchVersion ] )
+
+        WindowResized width height ->
+            ( { model | isPhoneScreen = width < 812 }, effects )
 
         _ ->
             ( model, effects )
@@ -335,6 +349,9 @@ update msg ( model, effects ) =
                 _ ->
                     ( model, effects )
 
+        Click HamburgerMenu ->
+            ( { model | isSideBarOpen = True }, effects )
+
         Hover hoverable ->
             ( { model | hovered = hoverable }, effects )
 
@@ -361,6 +378,7 @@ subscriptions =
     , OnClockTick OneSecond
     , OnMouse
     , OnKeyDown
+    , OnWindowResize
     ]
 
 
@@ -387,7 +405,41 @@ view userState model =
                             isPaused model.pipeline
                        )
                 )
-                [ TopBar.concourseLogo
+                [ if model.isPhoneScreen then
+                    Html.text ""
+
+                  else
+                    Html.div
+                        [ Html.Attributes.style "border-right" <|
+                            "1px solid "
+                                ++ separatorColor model.pipeline
+                        , Html.Attributes.style "opacity" "1"
+                        ]
+                        [ Html.div
+                            [ Html.Attributes.style "background-image"
+                                "url(/public/images/baseline-menu-24px.svg)"
+                            , Html.Attributes.style "background-position" "50% 50%"
+                            , Html.Attributes.style "background-repeat" "no-repeat"
+                            , Html.Attributes.style "width" "54px"
+                            , Html.Attributes.style "height" "54px"
+                            , Html.Attributes.style "cursor" "pointer"
+                            , onClick <| Click HamburgerMenu
+                            , onMouseEnter <| Hover <| Just HamburgerMenu
+                            , onMouseLeave <| Hover Nothing
+                            , if model.hovered == Just HamburgerMenu then
+                                Html.Attributes.style "opacity" "1"
+
+                              else
+                                Html.Attributes.style "opacity" "0.5"
+                            , if model.isSideBarOpen then
+                                Html.Attributes.style "background-color" "#333333"
+
+                              else
+                                Html.Attributes.style "background-color" Colors.frame
+                            ]
+                            []
+                        ]
+                , TopBar.concourseLogo
                 , TopBar.breadcrumbs route
                 , viewPinMenu
                     { pinnedResources = getPinnedResources model
@@ -418,6 +470,15 @@ view userState model =
                 [ viewSubPage model ]
             ]
         ]
+
+
+separatorColor : WebData Concourse.Pipeline -> String
+separatorColor pipeline =
+    if isPaused pipeline then
+        Colors.pausedTopbarSeparator
+
+    else
+        Colors.background
 
 
 viewPinMenu :
